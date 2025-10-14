@@ -52,6 +52,10 @@ Source('intel_8254_timer.cc')
 Source('mc146818.cc')
 Source('pixelpump.cc')
 
+SimObject('testAccel/MyAccel.py', sim_objects=['MyAccel'])
+
+Source('testAccel/MyAccel.cc')
+
 DebugFlag('Intel8254Timer')
 DebugFlag('MC146818')
 

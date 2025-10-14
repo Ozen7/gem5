@@ -1,0 +1,512 @@
+[1mdiff --git a/configs/myaccel/guest/Makefile b/configs/myaccel/guest/Makefile[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..8d0032b8ac[m
+[1m--- /dev/null[m
+[1m+++ b/configs/myaccel/guest/Makefile[m
+[36m@@ -0,0 +1,17 @@[m
+[32m+[m[32mCROSS   ?= riscv64-unknown-elf[m
+[32m+[m[32mCC      := $(CROSS)-gcc[m
+[32m+[m[32mOBJCOPY := $(CROSS)-objcopy[m
+[32m+[m
+[32m+[m[32mCFLAGS  := -O2 -march=rv64gc -mabi=lp64 -nostdlib -static[m
+[32m+[m[32mLDFLAGS := -T linker.ld[m
+[32m+[m
+[32m+[m[32mall: mmio_accel.elf[m
+[32m+[m
+[32m+[m[32mmmio_accel.elf: start.S mmio_accel.c linker.ld[m
+[32m+[m	[32m$(CC) $(CFLAGS) $(LDFLAGS) start.S mmio_accel.c -o $@[m
+[32m+[m
+[32m+[m[32mbin: all[m
+[32m+[m	[32m$(OBJCOPY) -O binary mmio_accel.elf mmio_accel.bin[m
+[32m+[m
+[32m+[m[32mclean:[m
+[32m+[m	[32mrm -f mmio_accel.elf mmio_accel.bin[m
+[1mdiff --git a/configs/myaccel/guest/linker.ld b/configs/myaccel/guest/linker.ld[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..66f12dac9e[m
+[1m--- /dev/null[m
+[1m+++ b/configs/myaccel/guest/linker.ld[m
+[36m@@ -0,0 +1,17 @@[m
+[32m+[m[32mENTRY(_start)[m
+[32m+[m
+[32m+[m[32mMEMORY[m
+[32m+[m[32m{[m
+[32m+[m[32m  RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 128M[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mSECTIONS[m
+[32m+[m[32m{[m
+[32m+[m[32m  . = ORIGIN(RAM);[m
+[32m+[m[32m  .text : { *(.text*) } > RAM[m
+[32m+[m[32m  .rodata : { *(.rodata*) } > RAM[m
+[32m+[m[32m  .data : { *(.data*) } > RAM[m
+[32m+[m[32m  .bss  : { *(.bss*) *(COMMON) } > RAM[m
+[32m+[m[32m  . = ALIGN(16);[m
+[32m+[m[32m  _stack_top = ORIGIN(RAM) + LENGTH(RAM);[m
+[32m+[m[32m}[m
+[1mdiff --git a/configs/myaccel/guest/mmio_accel.c b/configs/myaccel/guest/mmio_accel.c[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..14737be8d2[m
+[1m--- /dev/null[m
+[1m+++ b/configs/myaccel/guest/mmio_accel.c[m
+[36m@@ -0,0 +1,20 @@[m
+[32m+[m[32m#define ACCEL_BASE   0x10009000u[m
+[32m+[m[32m#define REG32(off) (*(volatile unsigned int*)(ACCEL_BASE + (off)))[m
+[32m+[m
+[32m+[m[32mint main(void) {[m
+[32m+[m[32m    // Example DRAM buffers (inside 0x8000_0000..)[m
+[32m+[m[32m    const unsigned src = 0x80010000u;[m
+[32m+[m[32m    const unsigned dst = 0x80020000u;[m
+[32m+[m
+[32m+[m[32m    // Program registers[m
+[32m+[m[32m    REG32(0x00) = src;       // SRC_LO[m
+[32m+[m[32m    REG32(0x04) = dst;       // DST_LO[m
+[32m+[m[32m    REG32(0x08) = 1024;      // LEN[m
+[32m+[m[32m    REG32(0x0C) = 1;         // CMD: start[m
+[32m+[m
+[32m+[m[32m    // Poll STATUS (bit1 = done)[m
+[32m+[m[32m    while ((REG32(0x10) & 2u) == 0) { }[m
+[32m+[m
+[32m+[m[32m    // Done. Spin forever in _start after return.[m
+[32m+[m[32m    return 0;[m
+[32m+[m[32m}[m
+[1mdiff --git a/configs/myaccel/guest/mmio_accel.elf b/configs/myaccel/guest/mmio_accel.elf[m
+[1mnew file mode 100755[m
+[1mindex 0000000000..f9a9bed889[m
+Binary files /dev/null and b/configs/myaccel/guest/mmio_accel.elf differ
+[1mdiff --git a/configs/myaccel/guest/start.S b/configs/myaccel/guest/start.S[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..9fac276abb[m
+[1m--- /dev/null[m
+[1m+++ b/configs/myaccel/guest/start.S[m
+[36m@@ -0,0 +1,6 @@[m
+[32m+[m[32m    .section .text[m
+[32m+[m[32m    .globl _start[m
+[32m+[m[32m_start:[m
+[32m+[m[32m    la   sp, _stack_top[m
+[32m+[m[32m    call main[m
+[32m+[m[32m1:  j 1b[m
+[1mdiff --git a/configs/myaccel/main_sys.py b/configs/myaccel/main_sys.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..3fdbf65f08[m
+[1m--- /dev/null[m
+[1m+++ b/configs/myaccel/main_sys.py[m
+[36m@@ -0,0 +1,38 @@[m
+[32m+[m[32m# configs/myaccel/fs_min.py[m
+[32m+[m[32mfrom m5.objects import MyAccel[m
+[32m+[m
+[32m+[m[32mfrom gem5.components.boards.x86_board import X86Board[m
+[32m+[m[32mfrom gem5.components.cachehierarchies.classic.no_cache import NoCache[m
+[32m+[m[32mfrom gem5.components.memory.single_channel import SingleChannelDDR4_2400[m
+[32m+[m[32mfrom gem5.components.processors.cpu_types import CPUTypes[m
+[32m+[m[32mfrom gem5.components.processors.simple_processor import SimpleProcessor[m
+[32m+[m[32mfrom gem5.isas import ISA[m
+[32m+[m[32mfrom gem5.resources.resource import obtain_resource[m
+[32m+[m[32mfrom gem5.simulate.simulator import Simulator[m
+[32m+[m
+[32m+[m[32m# 1) CPU/mem/cache[m
+[32m+[m[32mprocessor = SimpleProcessor(cpu_type=CPUTypes.TIMING, num_cores=1, isa=ISA.X86)[m
+[32m+[m[32mmemory = SingleChannelDDR4_2400("3GiB")[m
+[32m+[m[32mcaches = NoCache()[m
+[32m+[m[32mboard = X86Board([m
+[32m+[m[32m    clk_freq="3GHz", processor=processor, memory=memory, cache_hierarchy=caches[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32m# 2) Set *FS* workload first (this flips the board into full-system mode)[m
+[32m+[m[32m# Option A: one-line “workload resource” (Ubuntu 24.04 boot)[m
+[32m+[m[32mboard.set_workload(obtain_resource("x86-ubuntu-24.04-boot-no-systemd"))[m
+[32m+[m[32m# (Alt: explicit kernel+disk)[m
+[32m+[m[32m# board.set_kernel_disk_workload([m
+[32m+[m[32m#     kernel=obtain_resource("x86-linux-kernel-5.4.49"),[m
+[32m+[m[32m#     disk_image=obtain_resource("x86-ubuntu-18.04-img"),[m
+[32m+[m[32m# )[m
+[32m+[m
+[32m+[m[32m# 3) Now the board has an IO bus; attach your MMIO device[m
+[32m+[m[32maccel = MyAccel(pio_addr=0xC0001000, pio_size=0x1000)[m
+[32m+[m[32maccel.pio = ([m
+[32m+[m[32m    board.get_io_bus().mem_side_ports[m
+[32m+[m[32m)  # MMIO is a PIO *slave* on the IOXBar[m
+[32m+[m
+[32m+[m[32m# 4) Run[m
+[32m+[m[32msim = Simulator(board=board)[m
+[32m+[m[32msim.run()[m
+[1mdiff --git a/configs/myaccel/mmio_tgen.py b/configs/myaccel/mmio_tgen.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..572c035752[m
+[1m--- /dev/null[m
+[1m+++ b/configs/myaccel/mmio_tgen.py[m
+[36m@@ -0,0 +1,85 @@[m
+[32m+[m[32m#!/usr/bin/env python3[m
+[32m+[m[32m# Full-system platform with an IO bus, a system mem bus, your MMIO device,[m
+[32m+[m[32m# and a TrafficGen master that writes/reads the device registers.[m
+[32m+[m
+[32m+[m[32m# Import your SimObject (compiled under src/dev/testAccel/)[m
+[32m+[m[32mfrom m5.objects import ([m
+[32m+[m[32m    AddrRange,[m
+[32m+[m[32m    Bridge,[m
+[32m+[m[32m    IOXBar,[m
+[32m+[m[32m    MyAccel,[m
+[32m+[m[32m    PMAChecker,[m
+[32m+[m[32m    Root,[m
+[32m+[m[32m    SimpleMemory,[m
+[32m+[m[32m    SrcClockDomain,[m
+[32m+[m[32m    System,[m
+[32m+[m[32m    SystemXBar,[m
+[32m+[m[32m    TraceGen,[m
+[32m+[m[32m    TrafficGen,[m
+[32m+[m[32m    VoltageDomain,[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32mACCEL_BASE = 0x10009000  # MMIO window for MyAccel[m
+[32m+[m[32mDRAM_BASE = 0x80000000[m
+[32m+[m
+[32m+[m[32m# --- System + clocks/memory mode ---[m
+[32m+[m[32msystem = System()[m
+[32m+[m[32msystem.clk_domain = SrcClockDomain([m
+[32m+[m[32m    clock="1GHz", voltage_domain=VoltageDomain()[m
+[32m+[m[32m)[m
+[32m+[m[32msystem.mem_mode = "timing"[m
+[32m+[m[32msystem.mem_ranges = [AddrRange(start=DRAM_BASE, size="256MB")][m
+[32m+[m
+[32m+[m[32m# --- Buses ---[m
+[32m+[m[32msystem.iobus = IOXBar()  # incoherent I/O crossbar (MMIO)[m
+[32m+[m[32msystem.membus = SystemXBar()  # main memory crossbar[m
+[32m+[m[32msystem.system_port = system.membus.cpu_side_ports[m
+[32m+[m
+[32m+[m[32m# --- Bridge IO<->Mem (lets IO masters reach DRAM) ---[m
+[32m+[m[32msystem.bridge = Bridge(delay="50ns")[m
+[32m+[m[32msystem.bridge.mem_side_port = system.iobus.cpu_side_ports[m
+[32m+[m[32msystem.bridge.cpu_side_port = system.membus.mem_side_ports[m
+[32m+[m[32m# Forward any DRAM address range through the bridge[m
+[32m+[m[32msystem.bridge.ranges = system.mem_ranges[m
+[32m+[m
+[32m+[m[32m# --- DRAM backing store ---[m
+[32m+[m[32msystem.mem = SimpleMemory([m
+[32m+[m[32m    range=system.mem_ranges[0], latency="50ns", bandwidth="16GiB/s"[m
+[32m+[m[32m)[m
+[32m+[m[32msystem.mem.port = system.membus.mem_side_ports[m
+[32m+[m
+[32m+[m[32m# --- MMIO device (PIO slave on IO bus) ---[m
+[32m+[m[32msystem.myaccel = MyAccel(pio_addr=ACCEL_BASE, pio_size=0x1000)[m
+[32m+[m[32m# PIO (MMIO) ports are slaves on the IO bus (mem_side_ports)[m
+[32m+[m[32msystem.myaccel.pio = system.iobus.mem_side_ports[m
+[32m+[m
+[32m+[m[32m# --- PMA for MMIO semantics (mark MMIO as uncacheable) ---[m
+[32m+[m[32msystem.pma = PMAChecker(uncacheable=[AddrRange(ACCEL_BASE, size=0x1000)])[m
+[32m+[m
+[32m+[m[32m# --- TrafficGen master on the IO bus ---[m
+[32m+[m[32mtgen = TrafficGen()[m
+[32m+[m[32m# Masters plug into the cpu_side_ports of the bus they initiate requests on[m
+[32m+[m[32mtgen.port = system.iobus.cpu_side_ports[m
+[32m+[m
+[32m+[m[32m# Build a tiny trace: WR SRC, WR DST, WR LEN, WR CMD(start), RD STATUS[m
+[32m+[m[32mtrace = TraceGen()[m
+[32m+[m[32mtrace.set_addr_size(4)[m
+[32m+[m[32mtrace.create([m
+[32m+[m[32m    [[m
+[32m+[m[32m        (10, True, ACCEL_BASE + 0x00, 4, 0x80010000),  # SRC_LO[m
+[32m+[m[32m        (20, True, ACCEL_BASE + 0x04, 4, 0x80020000),  # DST_LO[m
+[32m+[m[32m        (30, True, ACCEL_BASE + 0x08, 4, 1024),  # LEN[m
+[32m+[m[32m        (40, True, ACCEL_BASE + 0x0C, 4, 1),  # CMD=start[m
+[32m+[m[32m        (60, False, ACCEL_BASE + 0x10, 4),  # STATUS read[m
+[32m+[m[32m    ],[m
+[32m+[m[32m    loop=False,[m
+[32m+[m[32m)[m
+[32m+[m[32mtgen.generator = trace[m
+[32m+[m
+[32m+[m[32mroot = Root(full_system=True, system=system)[m
+[32m+[m
+[32m+[m[32mimport m5[m
+[32m+[m
+[32m+[m[32mm5.instantiate()[m
+[32m+[m[32mprint(">>> TrafficGen→MMIO: writing MyAccel regs then reading STATUS")[m
+[32m+[m[32mm5.simulate()[m
+[1mdiff --git a/configs/myaccel/riscv_baremetal_mmio.py b/configs/myaccel/riscv_baremetal_mmio.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..f946ca4352[m
+[1m--- /dev/null[m
+[1m+++ b/configs/myaccel/riscv_baremetal_mmio.py[m
+[36m@@ -0,0 +1,110 @@[m
+[32m+[m[32m#!/usr/bin/env python3[m
+[32m+[m[32m# Minimal RISCV full-system (bare-metal) config with an IO bus + your MMIO device.[m
+[32m+[m
+[32m+[m[32mimport argparse[m
+[32m+[m
+[32m+[m[32m# Your device[m
+[32m+[m[32mfrom m5.objects import MyAccel  # from src/dev/testAccel/MyAccel.py[m
+[32m+[m[32mfrom m5.objects import ([m
+[32m+[m[32m    AddrRange,[m
+[32m+[m[32m    Bridge,[m
+[32m+[m[32m    HiFive,[m
+[32m+[m[32m    IOXBar,[m
+[32m+[m[32m    MemBus,[m
+[32m+[m[32m    PMAChecker,[m
+[32m+[m[32m    RiscvBareMetal,[m
+[32m+[m[32m    RiscvRTC,[m
+[32m+[m[32m    Root,[m
+[32m+[m[32m    SimpleMemory,[m
+[32m+[m[32m    SrcClockDomain,[m
+[32m+[m[32m    System,[m
+[32m+[m[32m    TimingSimpleCPU,[m
+[32m+[m[32m    VoltageDomain,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom m5.params import Frequency[m
+[32m+[m[32mfrom m5.util import addToPath[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef build_system(args):[m
+[32m+[m[32m    sys = System()[m
+[32m+[m[32m    sys.clk_domain = SrcClockDomain([m
+[32m+[m[32m        clock=args.sys_clock, voltage_domain=VoltageDomain()[m
+[32m+[m[32m    )[m
+[32m+[m[32m    sys.mem_mode = "timing"[m
+[32m+[m[32m    sys.mem_ranges = [AddrRange(start=0x80000000, size=args.mem_size)][m
+[32m+[m
+[32m+[m[32m    # Workload: bare-metal (no OS). Boot 'kernel' ELF at 0x8000_0000.[m
+[32m+[m[32m    sys.workload = RiscvBareMetal()[m
+[32m+[m[32m    sys.workload.bootloader = args.kernel[m
+[32m+[m
+[32m+[m[32m    # Buses[m
+[32m+[m[32m    sys.iobus = IOXBar()  # I/O crossbar (MMIO lives here)[m
+[32m+[m[32m    sys.membus = MemBus()  # main memory bus[m
+[32m+[m[32m    sys.system_port = sys.membus.cpu_side_ports[m
+[32m+[m
+[32m+[m[32m    # Platform similar to the example riscv FS script[m
+[32m+[m[32m    sys.platform = HiFive()[m
+[32m+[m[32m    sys.platform.rtc = RiscvRTC(frequency=Frequency("100MHz"))[m
+[32m+[m[32m    sys.platform.clint.int_pin = sys.platform.rtc.int_pin[m
+[32m+[m
+[32m+[m[32m    # Bridge between IO bus and mem bus for off-chip ranges[m
+[32m+[m[32m    sys.bridge = Bridge(delay="50ns")[m
+[32m+[m[32m    sys.bridge.mem_side_port = sys.iobus.cpu_side_ports[m
+[32m+[m[32m    sys.bridge.cpu_side_port = sys.membus.mem_side_ports[m
+[32m+[m[32m    sys.bridge.ranges = sys.platform._off_chip_ranges()[m
+[32m+[m
+[32m+[m[32m    # Attach on/off-chip IO and PLIC; set core count (1)[m
+[32m+[m[32m    sys.platform.attachOnChipIO(sys.membus)[m
+[32m+[m[32m    sys.platform.attachOffChipIO(sys.iobus)[m
+[32m+[m[32m    sys.platform.attachPlic()[m
+[32m+[m[32m    sys.platform.setNumCores(1)[m
+[32m+[m
+[32m+[m[32m    # CPU[m
+[32m+[m[32m    sys.cpu = [TimingSimpleCPU(cpu_id=0)][m
+[32m+[m[32m    # Minimal cacheless hookup[m
+[32m+[m[32m    sys.cpu[0].icache_port = sys.membus.cpu_side_ports[m
+[32m+[m[32m    sys.cpu[0].dcache_port = sys.membus.cpu_side_ports[m
+[32m+[m
+[32m+[m[32m    # PMA checker so uncached MMIO regions behave correctly[m
+[32m+[m[32m    uncacheable = [[m
+[32m+[m[32m        *sys.platform._on_chip_ranges(),[m
+[32m+[m[32m        *sys.platform._off_chip_ranges(),[m
+[32m+[m[32m    ][m
+[32m+[m[32m    sys.cpu[0].mmu.pma_checker = PMAChecker(uncacheable=uncacheable)[m
+[32m+[m
+[32m+[m[32m    # Simple DRAM backing[m
+[32m+[m[32m    sys.mem = SimpleMemory([m
+[32m+[m[32m        range=sys.mem_ranges[0], latency="50ns", bandwidth="16GiB/s"[m
+[32m+[m[32m    )[m
+[32m+[m[32m    sys.mem.port = sys.membus.mem_side_ports[m
+[32m+[m
+[32m+[m[32m    # Your MMIO device at 0x1000_9000[m
+[32m+[m[32m    sys.myaccel = MyAccel(pio_addr=0x10009000, pio_size=0x1000)[m
+[32m+[m[32m    sys.myaccel.pio = sys.iobus.mem_side_ports  # publish PIO slave onto IO bus[m
+[32m+[m
+[32m+[m[32m    return sys[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef main():[m
+[32m+[m[32m    p = argparse.ArgumentParser()[m
+[32m+[m[32m    p.add_argument([m
+[32m+[m[32m        "--kernel",[m
+[32m+[m[32m        required=True,[m
+[32m+[m[32m        help="Path to bare-metal RISCV ELF loaded at 0x80000000",[m
+[32m+[m[32m    )[m
+[32m+[m[32m    p.add_argument("--mem-size", default="3GB")[m
+[32m+[m[32m    p.add_argument("--sys-clock", default="1GHz")[m
+[32m+[m[32m    args = p.parse_args()[m
+[32m+[m
+[32m+[m[32m    system = build_system(args)[m
+[32m+[m[32m    root = Root(full_system=True, system=system)[m
+[32m+[m
+[32m+[m[32m    import m5[m
+[32m+[m
+[32m+[m[32m    m5.instantiate()[m
+[32m+[m[32m    print(">>> Running bare-metal RISCV with MyAccel MMIO @ 0x10009000")[m
+[32m+[m[32m    m5.simulate()[m
+[32m+[m
+[32m+[m
+[32m+[m[32mif __name__ == "__main__":[m
+[32m+[m[32m    main()[m
+[1mdiff --git a/src/dev/SConscript b/src/dev/SConscript[m
+[1mindex 87d1f638e6..353b852ac8 100644[m
+[1m--- a/src/dev/SConscript[m
+[1m+++ b/src/dev/SConscript[m
+[36m@@ -52,6 +52,10 @@[m [mSource('intel_8254_timer.cc')[m
+ Source('mc146818.cc')[m
+ Source('pixelpump.cc')[m
+ [m
+[32m+[m[32mSimObject('testAccel/MyAccel.py', sim_objects=['MyAccel'])[m
+[32m+[m
+[32m+[m[32mSource('testAccel/MyAccel.cc')[m
+[32m+[m
+ DebugFlag('Intel8254Timer')[m
+ DebugFlag('MC146818')[m
+ [m
+[1mdiff --git a/src/dev/testAccel/MyAccel.cc b/src/dev/testAccel/MyAccel.cc[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..568cd9e3e5[m
+[1m--- /dev/null[m
+[1m+++ b/src/dev/testAccel/MyAccel.cc[m
+[36m@@ -0,0 +1,84 @@[m
+[32m+[m[32m// src/dev/myaccel/MyAccel.cc[m
+[32m+[m[32m#include "dev/testAccel/MyAccel.hh"[m
+[32m+[m
+[32m+[m[32m#include "base/bitfield.hh"[m
+[32m+[m[32m#include "base/logging.hh"[m
+[32m+[m[32m#include "mem/packet.hh"[m
+[32m+[m[32m#include "mem/packet_access.hh"[m
+[32m+[m
+[32m+[m[32mnamespace gem5 {[m
+[32m+[m
+[32m+[m[32mMyAccel::MyAccel(const MyAccelParams& p)[m
+[32m+[m[32m  : BasicPioDevice(p, p.pio_size),        // base takes BasicPioDeviceParams&[m
+[32m+[m[32m    pioDelayTicks(p.pio_latency),[m
+[32m+[m[32m    resetDoneOnRead(p.reset_done_on_read)[m
+[32m+[m[32m{[m
+[32m+[m[32m    pioAddr = p.pio_addr;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mAddrRangeList[m
+[32m+[m[32mMyAccel::getAddrRanges() const[m
+[32m+[m[32m{[m
+[32m+[m[32m    // Advertise a single contiguous MMIO window[m
+[32m+[m[32m    return AddrRangeList{ RangeSize(pioAddr, pioSize) };[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32minline void[m
+[32m+[m[32mMyAccel::resp32(PacketPtr pkt, uint32_t val) const[m
+[32m+[m[32m{[m
+[32m+[m[32m    pkt->setLE<uint32_t>(val);[m
+[32m+[m[32m    pkt->makeResponse();[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mTick MyAccel::read(PacketPtr pkt)[m
+[32m+[m[32m{[m
+[32m+[m[32m    const Addr off = pkt->getAddr() - pioAddr;[m
+[32m+[m
+[32m+[m[32m    uint32_t val = 0;[m
+[32m+[m[32m    switch (off) {[m
+[32m+[m[32m        case 0x00: val = src_lo; break;[m
+[32m+[m[32m        case 0x04: val = dst_lo; break;[m
+[32m+[m[32m        case 0x08: val = len;    break;[m
+[32m+[m[32m        case 0x0C: val = cmd;    break;[m
+[32m+[m[32m        case 0x10: // STATUS: bit0=busy, bit1=done[m
+[32m+[m[32m            val = (busy ? 1u : 0u) | (done ? 2u : 0u);[m
+[32m+[m[32m            if (resetDoneOnRead) done = false;[m
+[32m+[m[32m            break;[m
+[32m+[m[32m        default:[m
+[32m+[m[32m            warn("%s: read unmapped offset 0x%x", name(), (unsigned)off);[m
+[32m+[m[32m            val = 0;[m
+[32m+[m[32m            break;[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    pkt->setLE<uint32_t>(val);[m
+[32m+[m[32m    pkt->makeResponse(); //we make a response but never send it[m
+[32m+[m[32m    return pioDelayTicks; // how long this MMIO takes[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mTick MyAccel::write(PacketPtr pkt)[m
+[32m+[m[32m{[m
+[32m+[m[32m    const Addr off = pkt->getAddr() - pioAddr;[m
+[32m+[m[32m    const uint32_t w = pkt->getLE<uint32_t>();[m
+[32m+[m
+[32m+[m[32m    switch (off) {[m
+[32m+[m[32m        case 0x00: src_lo = w; break;[m
+[32m+[m[32m        case 0x04: dst_lo = w; break;[m
+[32m+[m[32m        case 0x08: len    = w; break;[m
+[32m+[m[32m        case 0x0C:[m
+[32m+[m[32m            cmd = w;[m
+[32m+[m[32m            // Bit0=start; set busy, clear done (no DMA yet)[m
+[32m+[m[32m            if (w & 1) { busy = true; done = false; busy = false; done = true; }[m
+[32m+[m[32m            break;[m
+[32m+[m[32m        case 0x10:[m
+[32m+[m[32m            // STATUS is read-only; ignore writes for now[m
+[32m+[m[32m            break;[m
+[32m+[m[32m        default:[m
+[32m+[m[32m            warn("%s: write unmapped offset 0x%x", name(), (unsigned)off);[m
+[32m+[m[32m            break;[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    pkt->makeResponse();[m
+[32m+[m[32m    return pioDelayTicks;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m} // namespace gem5[m
+[1mdiff --git a/src/dev/testAccel/MyAccel.hh b/src/dev/testAccel/MyAccel.hh[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..1a89569e09[m
+[1m--- /dev/null[m
+[1m+++ b/src/dev/testAccel/MyAccel.hh[m
+[36m@@ -0,0 +1,39 @@[m
+[32m+[m[32m// src/dev/myaccel/MyAccel.hh[m
+[32m+[m[32m#pragma once[m
+[32m+[m
+[32m+[m[32m#include "dev/io_device.hh"     // BasicPioDevice[m
+[32m+[m[32m#include "params/MyAccel.hh"    // auto-generated from MyAccel.py[m
+[32m+[m
+[32m+[m[32mnamespace gem5 {[m
+[32m+[m
+[32m+[m[32mclass MyAccel : public BasicPioDevice[m
+[32m+[m[32m{[m
+[32m+[m[32m  public:[m
+[32m+[m[32m    MyAccel(const MyAccelParams &p);[m
+[32m+[m
+[32m+[m[32m    // Tell the bus which address range we own[m
+[32m+[m[32m    AddrRangeList getAddrRanges() const override;[m
+[32m+[m
+[32m+[m[32m    // Handle CPU MMIO transactions[m
+[32m+[m[32m    Tick read(PacketPtr pkt) override;[m
+[32m+[m[32m    Tick write(PacketPtr pkt) override;[m
+[32m+[m
+[32m+[m[32m  private:[m
+[32m+[m[32m    // Simple register file (all 32-bit for now)[m
+[32m+[m[32m    uint32_t src_lo  = 0;[m
+[32m+[m[32m    uint32_t dst_lo  = 0;[m
+[32m+[m[32m    uint32_t len     = 0;[m
+[32m+[m[32m    uint32_t cmd     = 0;[m
+[32m+[m[32m    bool     busy    = false;[m
+[32m+[m[32m    bool     done    = false;[m
+[32m+[m
+[32m+[m[32m    // Convenience: expose pioDelay (ticks) via base params[m
+[32m+[m[32m    Tick pioDelayTicks;[m
+[32m+[m
+[32m+[m[32m    // Helper: pack a 32-bit value into a response[m
+[32m+[m[32m    inline void resp32(PacketPtr pkt, uint32_t val) const;[m
+[32m+[m
+[32m+[m[32m    const bool resetDoneOnRead;[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32m} // namespace gem5[m
+[1mdiff --git a/src/dev/testAccel/MyAccel.py b/src/dev/testAccel/MyAccel.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000000..a1486e16c8[m
+[1m--- /dev/null[m
+[1m+++ b/src/dev/testAccel/MyAccel.py[m
+[36m@@ -0,0 +1,17 @@[m
+[32m+[m[32m# src/dev/myaccel/MyAccel.py[m
+[32m+[m[32mfrom m5.objects import BasicPioDevice[m
+[32m+[m[32mfrom m5.params import *[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass MyAccel(BasicPioDevice):[m
+[32m+[m[32m    type = "MyAccel"[m
+[32m+[m[32m    cxx_class = "gem5::MyAccel"[m
+[32m+[m[32m    cxx_header = "dev/testAccel/MyAccel.hh"[m
+[32m+[m
+[32m+[m[32m    # Where in physical address space the MMIO window lives[m
+[32m+[m[32m    pio_addr = Param.Addr(0xC0001000, "MMIO base address")[m
+[32m+[m[32m    pio_size = Param.Addr(0x1000, "MMIO size (bytes)")[m
+[32m+[m[32m    pio_latency = Param.Latency("50ns", "MMIO access latency")[m
+[32m+[m
+[32m+[m[32m    # A couple of toy knobs so we can see params plumbed through[m
+[32m+[m[32m    reset_done_on_read = Param.Bool(True, "Clear DONE when STATUS is read")[m
