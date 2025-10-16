@@ -3,7 +3,6 @@
 
 #include "dev/io_device.hh"     // BasicPioDevice
 #include "params/MyAccel.hh"    // auto-generated from MyAccel.py
-
 namespace gem5 {
 
 class MyAccel : public BasicPioDevice

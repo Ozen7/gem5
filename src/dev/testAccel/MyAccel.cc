@@ -5,6 +5,8 @@
 #include "base/logging.hh"
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
+#include "base/logging.hh"   // inform(), warn(), fatal()
+#include "sim/cur_tick.hh"   // curTick()
 
 namespace gem5 {
 
@@ -33,7 +35,7 @@ MyAccel::resp32(PacketPtr pkt, uint32_t val) const
 Tick MyAccel::read(PacketPtr pkt)
 {
     const Addr off = pkt->getAddr() - pioAddr;
-
+    inform("%s READ  off=0x%02x @%llu", name(), (unsigned)off, curTick());
     uint32_t val = 0;
     switch (off) {
         case 0x00: val = src_lo; break;
@@ -59,7 +61,8 @@ Tick MyAccel::write(PacketPtr pkt)
 {
     const Addr off = pkt->getAddr() - pioAddr;
     const uint32_t w = pkt->getLE<uint32_t>();
-
+    inform("%s WRITE off=0x%02x val=0x%08x @%llu",
+            name(), (unsigned)off, w, (unsigned)curTick());
     switch (off) {
         case 0x00: src_lo = w; break;
         case 0x04: dst_lo = w; break;
